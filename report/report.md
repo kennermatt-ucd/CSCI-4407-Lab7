@@ -425,9 +425,7 @@ python task4_deterministic/rsa_deterministic.py
 
 ### Screenshots
 
-**Screenshot 1 — `rsa_deterministic.py` terminal output**
-
-<!-- Insert screenshot: showing both ciphertexts are identical and Equal: True -->
+![Task4](task4.png)
 
 ### Explanation
 
@@ -472,7 +470,7 @@ python task5_attack/rsa_guess_attack.py
 
 **Screenshot 1 — `rsa_guess_attack.py` terminal output**
 
-<!-- Insert screenshot: showing candidate space, observed ciphertext, and attacker's recovered plaintext -->
+![Task 5](task5.png)
 
 ### Explanation
 
@@ -495,7 +493,6 @@ produces a different ciphertext every time, defeating the guessing attack.
 ### Source Code
 
 ```python
-# src/task6_randomized/rsa_randomized_demo.py  (see full file in submission)
 
 nonce = random.getrandbits(64)
 combined = nonce_bytes + message_bytes  # nonce || message
@@ -514,7 +511,7 @@ python task6_randomized/rsa_randomized_demo.py
 
 **Screenshot 1 — `rsa_randomized_demo.py` terminal output**
 
-<!-- Insert screenshot: showing same message producing two different ciphertexts, Equal: False -->
+![Task 6](task6.png)
 
 ### Explanation
 
