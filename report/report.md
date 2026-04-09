@@ -538,16 +538,65 @@ random session key, then encrypt only the session key with RSA.
 ### Source Code
 
 ```python
-# src/task7_hybrid/hybrid_rsa_aes.py  (see full file in submission)
+import os
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto.Random import get_random_bytes
 
-# Encrypt
-aes_key = get_random_bytes(32)         # random AES-256 session key
-iv, aes_ciphertext = aes_encrypt(aes_key, plaintext)
-encrypted_aes_key = encrypt(key_as_int, pub)
+# --- HELPER FUNCTIONS ---
+def GenerateRSAKeys():
+    """Generates a 2048 bit size RSA key pair"""
+    Key = RSA.generate(2048)
+    PrivateKey = Key.export_key()
+    PublicKey = Key.publickey().export_key()
+    return PrivateKey, PublicKey
 
-# Decrypt
-aes_key = decrypt(encrypted_aes_key, priv)  # RSA unwraps the session key
-plaintext = aes_decrypt(aes_key, iv, aes_ciphertext)
+# --- MAIN EXECUTION ---
+if __name__ == "__main__":
+    print("="*60)
+    print("        Task 7: Hybrid Encryption using RSA and AES")
+    print("="*60)
+
+    #Generates the recievers RSA keys
+    PrivateKeyData, PublicKeyData = GenerateRSAKeys()
+    
+    #Loads plaintext message
+    with open("msg1.txt", "rb") as f:
+        Message = f.read()
+    
+    #Generates a random one time use AES session key (WOW sooo cool!!!!) :3
+    SessionKey = get_random_bytes(16)
+    
+    #Encrypts our message we are sending with AES (using the session key from before)
+    CipherAES = AES.new(SessionKey, AES.MODE_EAX)
+    AESCiphertext, Tag = CipherAES.encrypt_and_digest(Message)
+    
+    #Encrypts the AES session key with RSA encryption (this uses the receiver's public key)
+    RecipientKey = RSA.import_key(PublicKeyData)
+    CipherRSA = PKCS1_OAEP.new(RecipientKey)
+    EncryptedSessionKey = CipherRSA.encrypt(SessionKey)
+
+    print(f"RSA Session Key: {EncryptedSessionKey.hex()}")
+    print(f"AES Nonce:                 {CipherAES.nonce.hex()}")
+    print(f"AES Ciphertext:            {AESCiphertext.hex()}")
+    
+    #Decrypt the AES session key with RSA decryption ( this uses receiver's private key)
+    PrivateKey = RSA.import_key(PrivateKeyData)
+    CipherRSADecrypter = PKCS1_OAEP.new(PrivateKey)
+    DecryptedSessionKey = CipherRSADecrypter.decrypt(EncryptedSessionKey)
+    
+    #Use the session key to decrypt the AES encrypted ciphertext
+    CipherAESDecrypter = AES.new(DecryptedSessionKey, AES.MODE_EAX, nonce=CipherAES.nonce)
+    
+    try:
+        DecryptedMessage = CipherAESDecrypter.decrypt_and_verify(AESCiphertext, Tag)
+        print("\nOriginal plaintext recovered.")
+        print(f"Decrypted Message: {DecryptedMessage.decode()}")
+        assert Message == DecryptedMessage
+    except ValueError:
+        print("\n Message integrity check failed, It seems that the message may have been tampered with :( ")
+
+    print("\n" + "="*60)
 ```
 
 ### Steps
@@ -555,25 +604,18 @@ plaintext = aes_decrypt(aes_key, iv, aes_ciphertext)
 **Step 1 — Run the hybrid encryption script**
 
 ```bash
-python task7_hybrid/hybrid_rsa_aes.py
+python3 hybrid_rsa_aes.py
 ```
 
 ### Screenshots
 
 **Screenshot 1 — `hybrid_rsa_aes.py` terminal output**
 
-<!-- Insert screenshot: showing plaintext, AES ciphertext (hex), encrypted AES key, IV, recovered plaintext, and ✓ match for each message -->
+![Task7](task7.png)
 
 ### Explanation
 
-A 256-bit AES session key is generated fresh for each message. The message is encrypted
-with AES-CBC — fast, symmetric, and suitable for arbitrary-length data. The 32-byte AES key
-is then encrypted with RSA, which acts as a secure key transport mechanism. The recipient
-uses their RSA private key to recover the AES key, then uses it to decrypt the message.
-This construction is used in virtually all real-world asymmetric cryptography: TLS uses RSA
-or ECDH to exchange a symmetric key, then AES for the actual data channel. PGP does the same.
-Hybrid encryption combines the key management advantages of asymmetric crypto with the speed
-and flexibility of symmetric crypto.
+For this task we use a 256 bit AES session key this is generated newly each time we want to send a message. The message is then encrypted with AES style encryption this is fast, uses symmetric encryption techniques, and is suitable for all lengths of data. The 32 byte AES key is then also encrypted but with an RSA encryption, this allows us to transport our message securly like a fully enclosed rail (This acts as our secure transport mechanism). Once the recipient receives the message the recipent uses their private RSA key to recover the AES key that was sent to them, the key is then used to decrypt the message sent. This hybrid encryption method is used in most moderrn asymmetric cryptography systems that we see in the real world, TLS uses RSA or ECDH to exchange a symmetric key, then AES for the actual data transporting; PGP also does the same. Hybrid encryption combines the key management advantages of asymmetric encryption cryptography techniques with the speed and flexibility of symmetric cryptography techniques allowing for admins to get the benefits of both systems.
 
 ---
 
@@ -583,53 +625,26 @@ and flexibility of symmetric crypto.
 
 A summary of all four encryption approaches evaluated in this lab.
 
-### Steps
-
-*(No script required — analysis only.)*
-
 ### Results Table
 
 | Method | Randomized? | Equality Leakage | Practical for Large Data? | Secure? | Recommendation |
 |---|:---:|:---:|:---:|:---:|---|
-| Plain RSA | No | Yes — identical CT for identical PT | No (size limit) | No | Never use directly |
-| Deterministic RSA | No | Yes | No | No | Demonstrates the problem only |
-| Randomized RSA (nonce demo) | Yes | No | No (size limit) | Partial | Better, but use OAEP in practice |
-| Hybrid (RSA + AES) | Yes (AES key + IV) | No | Yes | Yes | Standard practice |
+| Plain RSA | No | Yes | No | No | Never use by itself |
+| Deterministic RSA | No | Yes | No | No | No |
+| Randomized RSA (nonce demo) | Yes | No | No | No | No |
+| Hybrid (RSA + AES) | Yes | No | Yes | Yes | Yes |
 
 ### Explanation
 
-Plain and deterministic RSA are identical in this context — both produce the same ciphertext
-for the same input and are vulnerable to the guessing attack. The nonce-based randomisation
-from Task 6 eliminates equality leakage but does not solve the size limitation of RSA.
-Hybrid encryption addresses both problems: AES handles arbitrary-length messages efficiently,
-and the fresh AES key per session provides randomness, meaning two encryptions of the same
-message produce different ciphertexts. The only standardised, production-ready approach is
-hybrid encryption using RSA-OAEP for key wrapping and AES-GCM (or AES-CBC with HMAC) for
-the message.
+Both the plain and deterministic RSA are identical in the context of this issue as both produce the same ciphertext for the same input and are vulnerable to any type of guessing attacks. The nonce based randomisation from Task 6 eliminates equality leakage but does not solve the size limitation that RSA bring with it. Hybrid encryption addresses all of these problems the AES handles length of messages efficiently and without issue (addressing the length issue of RSA) and the never same AES key per session provides the randomness needed, this means that two encryptions of the same message will produce different ciphertexts. The only one that should be considered for practical secure direction in the future is the hybrid encryption using RSA for key wrapping and AES for encrypting the message it self.
+
+In our experiments it shows that randomness is the most important factor when dealing with improving the practical security of our public key encryption. The use of mathematica one wayness is what the randomness needs to be built on the make the randomness sucessful as it prevents the attacker from reversing the encryption process to claim sensitive information however, it is not enough on its own to prevent common attacks. Task 3 demonstates that a system that relies solely on one wayness alone is deterministic and this is shown in task 5 as we see that the attacker is able to use a guessing attack to encrpyt their own guesses using the public key to determine the contents of the ciphertext. We then see in task 6 that when we introduce randomness we no longer have the issues presented by deterministic encryption, as each message is now encrypted and produce a different ciphertext per each encryption. This additon of randomness completely defeats the use of the deterministic guessing attacks, as the attacks guesses would never match the produced ciphertext.  
 
 ---
 
 ## Task 9 — Reflection
 
-Deterministic encryption fails because it is a pure function of the plaintext and the public
-key: the same input always produces the same output. An attacker who can observe ciphertexts
-and knows (or can guess) the plaintext space can recover messages without touching the private
-key, simply by encrypting candidates and comparing — as shown in Task 5. IND-CPA requires that
-no computationally bounded adversary can distinguish the encryption of one message from another
-with better than 50% probability; deterministic encryption trivially fails this because the
-adversary only needs to encrypt the challenge messages themselves and compare. Randomness fixes
-this by making ciphertext a function of both the plaintext and a fresh unpredictable value,
-so no pre-computation is possible. Hybrid encryption is used in practice because RSA can only
-encrypt data smaller than its modulus, is orders of magnitude slower than AES, and requires
-carefully designed padding (OAEP) to be secure. By using RSA purely for key transport and AES
-for the data, we get the key management benefits of asymmetric cryptography combined with the
-speed and flexibility of symmetric encryption — the model used by TLS, PGP, and SSH.
+Deterministic encryption fails because it is function of purely just the plaintext and public key, this means that the same input always produces the same output. An attacker who can observe ciphertexts and knows (or can guess) the plaintext space can recover messages without touching the private key, simply by encrypting candidates and comparing them using the public key for encryption as shown in Task 5. In IND-CPA it is required that no adversary can distinguish the encryption of one message from another with better than 50% probability, this means that deterministic encryption fails this as the adversary only needs to encrypt the messages themselves and compare it to the ciphertext. Randomness fixes this by making the ciphertext a function of both the plaintext and a newly generated unpredictable value, this means that no pre computation is possible in this case. Hybrid encryption is used in practice because RSA can only encrypt data smaller than its modulus, this makes it considerably slower than AES, and requires carefully designed padding to still be secure. By using RSA purely for key transport and AES for the data transport, we get the key management benefits of asymmetric encryption combined with the
+speed and flexibility of symmetric encryption. This model is used by most modern systems in the real world today for its security benefits.
 
 ---
-
-## References
-
-- Rivest, R., Shamir, A., & Adleman, L. (1978). *A Method for Obtaining Digital Signatures and Public-Key Cryptosystems.* CACM 21(2).
-- Bellare, M. & Rogaway, P. (1994). *Optimal Asymmetric Encryption.* EUROCRYPT 1994.
-- NIST FIPS 197 — Advanced Encryption Standard (AES).
-- Python `pycryptodome` library documentation: https://pycryptodome.readthedocs.io
